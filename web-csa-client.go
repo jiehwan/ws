@@ -1,7 +1,7 @@
 package main
 
 import (
-	
+	"fmt"
 	"log"
 	
 	"golang.org/x/net/websocket"
@@ -12,14 +12,24 @@ import (
 	"net/http"
 	"net/url"
 	"net/http/httputil"
-	
+
+	"encoding/json"	
 )
 
-func main() {
+type ConnectReq struct {
+	Cmd string `json:"cmd"`
+	Name string `json:"name"`
+}
 
+type ConnectedResp struct {
+	Cmd string `json:"cmd"`
+	Token string `json:"token"`
+	Clinetnum int `json:"clientnum"`
+}
+
+func main() {
 	log.Printf("main\n")
 
-	
 /*
 	proxy := os.Getenv("HTTP_PROXY")
 	proxyUrl, err := url.Parse(proxy)
@@ -51,14 +61,45 @@ func main() {
 
 	defer ws.Close()
 
-	for {
-		var message string
-		if err := websocket.Message.Receive(ws, &message); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("message: %s", message)
+	// connecting...
+	name, _ := os.Hostname()
+    err = wsReqeustConnection(ws, name)
+
+    // receive connection token
+    Token, err := wsReceiveConnection(ws)
+	log.Printf("recv.Token = '%s'", Token)
+
+/*
+	var message string
+	if err := websocket.Message.Receive(ws, &message); err != nil {
+		log.Fatal(err)
 	}
+	log.Printf("received: %s", message)
+*/
 }
+
+func wsReqeustConnection(ws *websocket.Conn, name string) (err error) {
+	send := ConnectReq{}
+    send.Cmd = "request"
+    send.Name = name
+
+	websocket.JSON.Send(ws, send)
+
+	return nil
+}
+
+func wsReceiveConnection(ws *websocket.Conn) (Token string, err error) {
+	recv := ConnectedResp{}
+
+	err = websocket.JSON.Receive(ws, &recv)
+	if(err != nil) {
+		log.Fatal(err)
+	}
+
+	return recv.Token, err
+}
+
+
 
 
 func ProxyDial(url_, protocol, origin string) (ws *websocket.Conn, err error) {
@@ -198,4 +239,26 @@ func websocketProxy(target string) http.Handler {
                 <-errc
         })
     }
+
+func json_marshal() {
+	// convert from struct to string
+    send := ConnectedResp{}
+    send.Cmd = "request"
+    send.Token = "1234"
+    send.Clinetnum = 88
+
+    send_str, _ := json.Marshal(send)
+    fmt.Println(string(send_str))
+}
+
+func json_unmarshal() {
+	// convert from string to struct
+	rcv_str := `{"cmd": "connected" 
+			, "token": "test-token"
+			, "clinetnum": 3}`
+	rcv := ConnectedResp{}
+	json.Unmarshal([]byte(rcv_str), &rcv)
+    fmt.Println(rcv)
+    fmt.Println(rcv.Cmd)
+}
 
