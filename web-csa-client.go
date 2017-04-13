@@ -16,6 +16,10 @@ import (
 	"encoding/json"	
 )
 
+type Command struct {
+	Cmd string `json:"cmd"`
+}
+
 type ConnectReq struct {
 	Cmd string `json:"cmd"`
 	Name string `json:"name"`
@@ -29,6 +33,7 @@ type ConnectedResp struct {
 
 func main() {
 	log.Printf("main\n")
+
 
 /*
 	proxy := os.Getenv("HTTP_PROXY")
@@ -61,13 +66,39 @@ func main() {
 
 	defer ws.Close()
 
-	// connecting...
+	/* connect test2 : message driven
+	*/
+	messages := make(chan string)
+	go wsReceive(ws, messages)
+
 	name, _ := os.Hostname()
     err = wsReqeustConnection(ws, name)
 
-    // receive connection token
-    Token, err := wsReceiveConnection(ws)
-	log.Printf("recv.Token = '%s'", Token)
+    for{
+    	msg := <-messages
+
+    	rcv := Command{}
+		json.Unmarshal([]byte(msg), &rcv)
+	    fmt.Println(rcv.Cmd)
+
+	    switch (rcv.Cmd) {
+    	case "connected" :
+    		log.Printf("connected succefully~~")
+
+		case "getContainerLists" :
+    		log.Printf("command <getContainerLists>")
+    		wsSendContainerLists(ws)
+
+	    default :
+	    	log.Printf("add command of {%s}", rcv.Cmd)
+	    }
+
+
+    }
+
+	/* connect test1 : send and receive with JSON
+	*/
+	//wsTest1(ws)
 
 /*
 	var message string
@@ -77,6 +108,96 @@ func main() {
 	log.Printf("received: %s", message)
 */
 }
+
+func wsReceive(ws *websocket.Conn, chan_msg chan string) (err error) {
+	var read_buf string
+
+	for {
+		err = websocket.Message.Receive(ws, &read_buf)
+		if (err != nil) {
+			log.Fatal(err)
+		}
+		log.Printf("received: %s", read_buf)
+		chan_msg <- read_buf
+	}
+	return err
+}
+
+type ContainerInfo struct {
+    ContainerID string `json:"container_id"`
+	ContainerStatus string `json:"container_status"`
+}
+type ContainerLists struct {
+	Cmd string `json:"cmd"`
+	ContainerCount int `json:"container_count"`
+	Container []ContainerInfo `json:"container"`
+}
+
+/*
+// go-to-json output is follows.. but there is problem during init.
+type ContainerLists struct {
+	Cmd string `json:"cmd"`
+	ContainerCount int `json:"container_count"`
+	Container []struct {
+		ContainerID string `json:"container_id"`
+		ContainerStatus string `json:"container_status"`
+	} `json:"container"`
+}
+*/
+
+func wsSendContainerLists(ws *websocket.Conn) (err error) {
+
+	//First.. OK
+	send := ContainerLists{
+		Cmd : "getContainerLists",
+		ContainerCount : 2,
+		Container :[]ContainerInfo{
+			{ 
+				ContainerID : "1111",
+				ContainerStatus : "running",
+			},
+			{
+				ContainerID : "2222",
+				ContainerStatus : "exited",
+			},
+		},
+	}
+	
+	/*
+	//Second... OR we can set seperated format --> Error..
+	send := ContainerLists{}
+	send.Cmd = "getContainerLists"
+    send.ContainerCount = 2
+    send.Container[0].ContainerID = "1111"
+    send.Container[0].ContainerStatus = "running"
+    send.Container[1].ContainerID = "2222"
+    send.Container[1].ContainerStatus = "exited"
+    */
+
+    // TODO,,,
+
+
+
+
+
+
+	websocket.JSON.Send(ws, send)
+
+	return nil
+}
+
+
+func wsTest1(ws *websocket.Conn) (err error){
+	name, _ := os.Hostname()
+    err = wsReqeustConnection(ws, name)
+
+    // receive connection token
+    Token, err := wsReceiveConnection(ws)
+	log.Printf("recv.Token = '%s'", Token)
+
+	return err
+}
+
 
 func wsReqeustConnection(ws *websocket.Conn, name string) (err error) {
 	send := ConnectReq{}
@@ -98,8 +219,6 @@ func wsReceiveConnection(ws *websocket.Conn) (Token string, err error) {
 
 	return recv.Token, err
 }
-
-
 
 
 func ProxyDial(url_, protocol, origin string) (ws *websocket.Conn, err error) {
